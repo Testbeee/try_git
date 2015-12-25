@@ -5,8 +5,8 @@ grammar Simple
 
   rule sequence
     first:sequenced_statement ignore ';' ignore second:sequence {
-      def to_ast
-        Sequence.new(first.to_ast, second.to_ast)
+      def to_ast(env)
+        Sequence.new(first.to_ast(env), second.to_ast(env))
       end
     }
     /
@@ -14,57 +14,73 @@ grammar Simple
   end
 
   rule sequenced_statement
-    while / assign / if / print_seq / do_nothing
+    while / assign / if / print_seq / clos_apply / expression / do_nothing
   end
 
   rule while
     ignore 'while' ignore '(' ignore condition:expression ignore ')' ignore '{' ignore body:statement ignore '}' ignore {
-      def to_ast
-        While.new(condition.to_ast, body.to_ast)
+      def to_ast(env)
+        While.new(condition.to_ast(env), body.to_ast(env))
       end
     }
   end
 
   rule assign
     name:[a-z]+ ignore '=' ignore expression {
-      def to_ast
-        Assign.new(name.text_value.to_sym, expression.to_ast)
+      def to_ast(env)
+        Assign.new(name.text_value.to_sym, expression.to_ast(env))
       end
     }
   end
 
   rule if
    ignore 'if' ignore '(' ignore condition:expression ignore ')' ignore '{' ignore consequence:statement ignore '}' ignore 'else' ignore '{' ignore alternative:statement ignore '}' ignore {
-      def to_ast
-        If.new(condition.to_ast, consequence.to_ast, alternative.to_ast)
+      def to_ast(env)
+        If.new(condition.to_ast(env), consequence.to_ast(env), alternative.to_ast(env))
       end
     }
   end
 
   rule print_seq
     'print' ignore '(' ignore expr:expression ignore ')' ignore {
-        def to_ast
-            PrintSeq.new(expr.to_ast)
+        def to_ast(env)
+            PrintSeq.new(expr.to_ast(env))
         end
+    }
+  end
+
+  rule clos_apply
+    func:variable '[' ex_para:expression ']' {
+        def to_ast(env)
+            ClosApply.new(func.to_ast(env),ex_para.to_ast(env))
+        end            
     }
   end
 
   rule do_nothing
     'do-nothing' {
-      def to_ast
+      def to_ast(env)
         DoNothing.new
       end
     }
   end
 
   rule expression
-    less_than
+    less_than / clos
+  end
+
+  rule clos
+    '-> ' para:variable ' {' ignore prog:sequence ignore '}' {
+        def to_ast(env)
+            Clos.new(para.to_ast(env),prog.to_ast(env),{})
+        end            
+    }
   end
 
   rule less_than
-    left:add ignore '<' ignore right:less_than {
-      def to_ast
-        LessThan.new(left.to_ast, right.to_ast)
+    left:more_than ignore '<' ignore right:less_than {
+      def to_ast(env)
+        LessThan.new(left.to_ast(env), right.to_ast(env))
       end
     }
     /
@@ -72,9 +88,9 @@ grammar Simple
   end
 
   rule more_than
-    left:add ignore '>' ignore right:less_than {
-      def to_ast
-        MoreThan.new(left.to_ast, right.to_ast)
+    left:equal_to ignore '>' ignore right:more_than {
+      def to_ast(env)
+        MoreThan.new(left.to_ast(env), right.to_ast(env))
       end
     }
     /
@@ -82,9 +98,9 @@ grammar Simple
   end
 
   rule equal_to
-    left:add ignore '==' ignore right:less_than {
-      def to_ast
-        EqualTo.new(left.to_ast, right.to_ast)
+    left:add ignore '==' ignore right:equal_to {
+      def to_ast(env)
+        EqualTo.new(left.to_ast(env), right.to_ast(env))
       end
     }
     /
@@ -92,9 +108,19 @@ grammar Simple
   end
 
   rule add
-    left:multiply ignore '+' ignore right:add {
-      def to_ast
-        Add.new(left.to_ast, right.to_ast)
+    left:minus ignore '+' ignore right:add {
+      def to_ast(env)
+        Add.new(left.to_ast(env), right.to_ast(env))
+      end
+    }
+    /
+    minus
+  end
+
+  rule minus
+    left:multiply ignore '-' ignore right:minus {
+      def to_ast(env)
+        Minus.new(left.to_ast(env), right.to_ast(env))
       end
     }
     /
@@ -102,9 +128,19 @@ grammar Simple
   end
 
   rule multiply
-    left:brackets ignore '*' ignore right:multiply {
-      def to_ast
-        Multiply.new(left.to_ast, right.to_ast)
+    left:divide ignore '*' ignore right:multiply {
+      def to_ast(env)
+        Multiply.new(left.to_ast(env), right.to_ast(env))
+      end
+    }
+    /
+    divide
+  end
+
+  rule divide
+    left:brackets ignore '/' ignore right:divide {
+      def to_ast(env)
+        Divide.new(left.to_ast(env), right.to_ast(env))
       end
     }
     /
@@ -113,8 +149,8 @@ grammar Simple
 
   rule brackets
     ignore '(' ignore expression ignore ')' ignore {
-      def to_ast
-        expression.to_ast
+      def to_ast(env)
+        expression.to_ast(env)
       end
     }
     /
@@ -129,7 +165,7 @@ grammar Simple
 
   rule number
     [0-9]+ {
-      def to_ast
+      def to_ast(env)
         Number.new(text_value.to_i)
       end
     }
@@ -137,7 +173,7 @@ grammar Simple
 
   rule boolean
     ('true' / 'false') ![a-z] {
-      def to_ast
+      def to_ast(env)
         Boolean.new(text_value == 'true')
       end
     }
@@ -145,7 +181,7 @@ grammar Simple
 
   rule variable
     [a-z]+ {
-      def to_ast
+      def to_ast(env)
         Variable.new(text_value.to_sym)
       end
     }
@@ -157,14 +193,14 @@ grammar Simple
 
   rule space
     " "* {
-      def to_ast
+      def to_ast(env)
       end
     }
   end
 
   rule newline
     '\n'* {
-      def to_ast
+      def to_ast(env)
       end
     }
   end
